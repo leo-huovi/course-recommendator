@@ -6,10 +6,10 @@ angular.module('courseVizApp', [])
     $scope.similarCourses = [];
     $scope.loading = false;
     $scope.searchText = '';
-    $scope.year = '2023'; // Default year, can be made selectable
+    $scope.year = '2023';
 
-    // Load all courses for the selected year
-    $http.get(`/api/courses/${$scope.year}`)
+    // Load courses from your MongoDB structure
+    $http.get(`/opintosuunnitelmat/${$scope.year}`)
         .then(function(response) {
             $scope.courses = response.data.courses;
             console.log('Loaded courses:', $scope.courses.length);
@@ -18,24 +18,42 @@ angular.module('courseVizApp', [])
             console.error('Error loading courses:', error);
         });
 
+    // Calculate cosine similarity between two embeddings
+    function cosineSimilarity(embedA, embedB) {
+        if (!embedA || !embedB) return 0;
+
+        let dotProduct = 0;
+        let normA = 0;
+        let normB = 0;
+
+        for (let i = 0; i < embedA.length; i++) {
+            dotProduct += embedA[i] * embedB[i];
+            normA += embedA[i] * embedA[i];
+            normB += embedB[i] * embedB[i];
+        }
+
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+
     // Function to handle course selection
     $scope.selectCourse = function(course) {
         $scope.loading = true;
         $scope.selectedCourse = course;
 
-        // Get pre-calculated similarities from MongoDB
-        $http.get(`/api/similarities/${$scope.year}/${course.id}`)
-            .then(function(response) {
-                $scope.similarCourses = response.data.similar_courses;
-                $scope.loading = false;
-            })
-            .catch(function(error) {
-                console.error('Error loading similarities:', error);
-                $scope.loading = false;
-            });
+        // Calculate similarities
+        let similarities = $scope.courses
+            .filter(c => c.id !== course.id && c.embedding)
+            .map(c => ({
+                ...c,
+                similarity: cosineSimilarity(course.embedding, c.embedding)
+            }))
+            .sort((a, b) => b.similarity - a.similarity)
+            .slice(0, 5);
+
+        $scope.similarCourses = similarities;
+        $scope.loading = false;
     };
 
-    // Function to get translated name based on language
     $scope.getCourseName = function(course, lang = 'en') {
         return lang === 'fi' ? course.name_fi : course.name_en;
     };
